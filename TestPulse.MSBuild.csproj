@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>TestPulse.MSBuild</PackageId>
+    <!-- The .TestLogger suffix is required for VSTest's own extension
+         auto-discovery via the test-adapter-path mechanism (confirmed
+         empirically: an identically-implemented ITestLogger named
+         "ProbeLogger.dll" was not discovered; renaming to
+         "Probe.TestLogger.dll" was). The same assembly also serves as
+         the library consuming test code references for
+         [TestPulseCase]/TestPulseAttachments. -->
+    <AssemblyName>TestPulse.TestLogger</AssemblyName>
+    <RootNamespace>TestPulse</RootNamespace>
+    <Authors>Barayo</Authors>
+    <Description>xUnit v3 importer plugin for TestPulse execution import: tag tests with a case key, auto-annotate and submit JUnit XML reports on `dotnet test`.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Barayo/testpulse-dotnet</RepositoryUrl>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SDK-style projects include all .cs files under the project
+         directory recursively by default. Exclude the sibling test
+         project explicitly so it isn't accidentally compiled twice
+         (once into this assembly, once into its own). -->
+    <Compile Remove="tests\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="1.0.1" />
+    <PackageReference Include="JunitXml.TestLogger" Version="6.1.0" />
+    <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="17.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The .props file sets default VSTestLogger/VSTestTestAdapterPath
+         properties so a plain `dotnet test` auto-discovers and runs
+         TestPulseLogger with zero CLI flags, verified via isolated
+         repro to survive test failure (unlike the originally, and
+         incorrectly, specified AfterTargets="VSTest" approach). -->
+    <None Include="build\TestPulse.MSBuild.props" Pack="true" PackagePath="build\TestPulse.MSBuild.props" />
+    <!-- The built assembly is placed a second time under build/tools/,
+         which VSTestTestAdapterPath (set by the .props above) points at,
+         making TestPulseLogger discoverable at test-run time separate
+         from its normal lib/ path used for compile-time
+         [TestPulseCase]/TestPulseAttachments references. -->
+    <None Include="$(OutputPath)$(AssemblyName).dll" Pack="true" PackagePath="build\tools\%(Filename)%(Extension)" Condition="Exists('$(OutputPath)$(AssemblyName).dll')" />
+  </ItemGroup>
+
+</Project>

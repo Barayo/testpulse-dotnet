@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <!-- Auto-wires TestPulseLogger into a plain `dotnet test`, with no
+         CLI flags required, verified via isolated repro to survive a
+         genuinely failing test run (unlike the originally-planned
+         AfterTargets="VSTest" MSBuild-target approach, which MSBuild
+         silently never schedules once the built-in VSTestTask fails).
+         The Condition guards preserve an existing explicit choice: if
+         the consuming project already sets its own VSTestLogger/
+         VSTestTestAdapterPath, TestPulseLogger is simply not added
+         rather than silently overriding it. -->
+    <VSTestLogger Condition=" '$(VSTestLogger)' == '' ">testpulse</VSTestLogger>
+    <VSTestTestAdapterPath Condition=" '$(VSTestTestAdapterPath)' == '' ">$(MSBuildThisFileDirectory)tools</VSTestTestAdapterPath>
+  </PropertyGroup>
+</Project>
