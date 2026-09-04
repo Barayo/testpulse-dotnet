@@ -56,16 +56,26 @@ public class JUnitReportBuilderTests
     }
 
     [Fact]
-    public void DecoratedTheoryInvocationIsLeftUnmodifiedAndNoted()
+    public void TheoryTaggedMethodIsLeftUnmodifiedAndNoted()
     {
+        // VSTest's real TestCase.FullyQualifiedName does NOT carry a
+        // Theory invocation's decorated suffix (only DisplayName does,
+        // confirmed empirically against a real xUnit v3 Theory run) --
+        // every invocation of a [Theory] method reaches the annotate step
+        // under the exact same undecorated name, so two rows sharing one
+        // name is what a real multi-InlineData Theory run actually looks
+        // like, not a single decorated name.
         var (xml, result) = JUnitReportBuilder.Build("suite", FixtureAssembly, new[]
         {
-            new ObservedResult(FixtureClass, "DecoratedMethod(user: \"a\")", "DecoratedMethod(user: \"a\")", TimeSpan.Zero, ObservedOutcome.Passed, null, null),
+            Passed("DecoratedMethod"),
+            Passed("DecoratedMethod"),
         });
 
-        var testcase = Testcase(xml, "DecoratedMethod(user: \"a\")");
-        Assert.Null(testcase.Element("properties"));
-        Assert.Contains(result.Notes, n => n.TestCaseName.StartsWith("DecoratedMethod") && n.Reason.Contains("Theory"));
+        var testcases = XDocument.Parse(xml).Descendants("testcase")
+            .Where(e => (string)e.Attribute("name")! == "DecoratedMethod").ToList();
+        Assert.Equal(2, testcases.Count);
+        Assert.All(testcases, tc => Assert.Null(tc.Element("properties")));
+        Assert.Contains(result.Notes, n => n.TestCaseName == "DecoratedMethod" && n.Reason.Contains("Theory"));
     }
 
     [Fact]
@@ -98,5 +108,20 @@ public class JUnitReportBuilderTests
 
         var testcase = Testcase(xml, "LoginSucceeds");
         Assert.NotNull(testcase.Element("skipped"));
+    }
+
+    [Fact]
+    public void ReportDoesNotDeclareAMismatchedEncoding()
+    {
+        // XmlWriter.Create(StringBuilder, ...) always emits
+        // encoding="utf-16" in the prolog regardless of the actual bytes
+        // -- a well-known .NET gotcha. The report is only ever embedded as
+        // a string inside a JSON payload sent as UTF-8, so a declared
+        // "utf-16" is simply wrong and TestPulse's server-side decoder
+        // (no CharsetReader configured) rejects it outright with a real
+        // 400. Confirmed against a real running TestPulse instance.
+        var (xml, _) = JUnitReportBuilder.Build("suite", FixtureAssembly, new[] { Passed("LoginSucceeds") });
+
+        Assert.DoesNotContain("utf-16", xml, StringComparison.OrdinalIgnoreCase);
     }
 }

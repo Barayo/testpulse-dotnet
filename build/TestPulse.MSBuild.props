@@ -11,29 +11,44 @@
          registered JunitXml.TestLogger; confirmed during implementation
          that $(VSTestLogger) cannot combine two independently-named
          loggers into one run (each works alone, "junit;testpulse"
-         silently drops one), a real platform limitation. The Condition
-         guards preserve an existing explicit choice: if the consuming
-         project already sets its own VSTestLogger/VSTestTestAdapterPath,
-         TestPulseLogger is simply not added rather than silently
-         overriding it. -->
+         silently drops one), a real platform limitation.
+
+         TestPulseUrl/TestPulseProject/TestPulseFailOnUnmatched/
+         TestPulseDryRun do NOT reach TestPulseLogger through this
+         property, or through VSTestEnvironment. See
+         TestPulse.MSBuild.targets' TestPulseSetEnvVars target for the
+         mechanism that actually works (an inline task calling
+         Environment.SetEnvironmentVariable directly, in-process, before
+         VSTestTask ever spawns the driver subprocess this logger runs
+         in) and the two other mechanisms tried and empirically rejected
+         first: embedding "Key=Value" pairs into this very property (it
+         turned out to be a semicolon-delimited LIST OF LOGGERS, not a
+         single "name;Key=Value" parameter string, confirmed
+         empirically: setting it to "testpulse;Url=$(TestPulseUrl)"
+         produced "The Test Logger URI 'Url=' is not valid" warnings,
+         the same underlying fact already responsible for the earlier
+         "junit;testpulse silently drops one" discovery), and
+         VSTestEnvironment (which only injects environment variables into
+         the spawned test host process, never into the separate driver
+         process TestPulseLogger itself runs in).
+
+         The Condition guard preserves an existing explicit choice: if the
+         consuming project already sets its own VSTestLogger/
+         VSTestTestAdapterPath, TestPulseLogger is simply not added,
+         rather than silently overriding it, so in that case none of
+         these properties reach the logger at all, a documented
+         limitation (README), same as before. -->
     <VSTestLogger Condition=" '$(VSTestLogger)' == '' ">testpulse</VSTestLogger>
     <VSTestTestAdapterPath Condition=" '$(VSTestTestAdapterPath)' == '' ">$(MSBuildThisFileDirectory)tools</VSTestTestAdapterPath>
   </PropertyGroup>
 
-  <!-- Maps TestPulse* MSBuild properties (settable via a plain csproj
-       PropertyGroup, or overridden with `dotnet test /p:TestPulseUrl=...`
-       on the command line, with MSBuild resolving that precedence itself)
-       into environment variables on the test host process via the real,
-       MSBuild-recognized VSTestEnvironment item. Each Condition means: if
-       the property was never set, no environment variable is added here
-       at all, so a TESTPULSE_TOKEN a user already set directly in their
-       shell/CI environment passes through untouched rather than being
-       overwritten with an empty value. -->
-  <ItemGroup>
-    <VSTestEnvironment Include="TESTPULSE_URL=$(TestPulseUrl)" Condition=" '$(TestPulseUrl)' != '' " />
-    <VSTestEnvironment Include="TESTPULSE_TOKEN=$(TestPulseToken)" Condition=" '$(TestPulseToken)' != '' " />
-    <VSTestEnvironment Include="TESTPULSE_PROJECT=$(TestPulseProject)" Condition=" '$(TestPulseProject)' != '' " />
-    <VSTestEnvironment Include="TESTPULSE_FAIL_ON_UNMATCHED=$(TestPulseFailOnUnmatched)" Condition=" '$(TestPulseFailOnUnmatched)' != '' " />
-    <VSTestEnvironment Include="TESTPULSE_DRY_RUN=$(TestPulseDryRun)" Condition=" '$(TestPulseDryRun)' != '' " />
-  </ItemGroup>
+  <!-- The API token is deliberately NOT settable via an MSBuild property
+       at all (no TestPulseToken property, no VSTestEnvironment/logger-
+       parameter bridging), unlike the four settings above, since
+       embedding a secret into $(VSTestLogger) or a VSTestEnvironment item
+       risks it appearing in verbose build output. TESTPULSE_TOKEN must be
+       set directly as a real environment variable (e.g. a CI secret),
+       which both the driver process (TestPulseLogger) and, transitively,
+       any child process it spawns already inherit with no bridging
+       needed. -->
 </Project>

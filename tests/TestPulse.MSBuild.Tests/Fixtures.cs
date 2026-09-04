@@ -1,8 +1,12 @@
+using Xunit;
+
 namespace TestPulse.MSBuild.Tests.Fixtures;
 
-// Pure reflection fixtures for ReportAnnotator tests -- deliberately NOT
-// real xUnit [Fact]s (no attribute needed for that), since these classes
-// exist only to be reflected over, not executed.
+// Pure reflection fixtures for JUnitReportBuilder tests -- deliberately
+// NOT run as real xUnit tests themselves (the [Theory]/[InlineData] below
+// exist only so GetCustomAttribute<TheoryAttribute>() finds something
+// real to reflect over, matching how TryInjectProperties actually
+// detects a Theory method -- see JUnitReportBuilder.cs).
 public class LoginTests
 {
     [TestPulse.TestPulseCase("LOGIN-42")]
@@ -17,7 +21,9 @@ public class LoginTests
     public void UntaggedMethod() { }
 
     [TestPulse.TestPulseCase("THEORY-1")]
-    public void DecoratedMethod() { }
+    [Theory]
+    [InlineData("a")]
+    public void DecoratedMethod(string user) { }
 
     [TestPulse.TestPulseCase("OVERLOAD-1")]
     public void OverloadedMethod() { }

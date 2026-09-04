@@ -83,6 +83,39 @@ public class PipelineE2ETests
     }
 
     [Fact]
+    public void MSBuildPropertyConfigurationReachesTheLoggerWithoutDirectEnvVars()
+    {
+        // Only TESTPULSE_TOKEN is set directly -- Url/Project are passed
+        // as MSBuild property overrides (/p:TestPulseUrl=...), the same
+        // mechanism a plain <TestPulseUrl> csproj default resolves
+        // through. This is the one configuration path none of the other
+        // pipeline tests exercise, and it does NOT work through
+        // VSTestEnvironment or embedding values into $(VSTestLogger) --
+        // see TestPulse.MSBuild.targets' TestPulseSetEnvVars target for
+        // the mechanism that actually delivers it (an inline task setting
+        // real environment variables in-process, before VSTestTask spawns
+        // the driver subprocess TestPulseLogger runs in).
+        using var server = new StubServer
+        {
+            Handler = path => (201, "{\"id\":\"r1\",\"key\":\"LOGIN-R5\"}"),
+        };
+
+        var env = new Dictionary<string, string>
+        {
+            ["TESTPULSE_TOKEN"] = "t0k3n",
+        };
+
+        var (exitCode, output) = E2EHelper.RunDotnetTest(
+            "BasicFixture",
+            env,
+            $"/p:TestPulseUrl={server.Url.TrimEnd('/')}",
+            "/p:TestPulseProject=LOGIN");
+
+        Assert.True(exitCode == 0, $"dotnet test failed unexpectedly:\n{output}");
+        Assert.Equal("/api/v1/projects/LOGIN/imports", server.LastRequestPath);
+    }
+
+    [Fact]
     public void UnmatchedWithoutFailOnUnmatchedLeavesTheBuildSucceeding()
     {
         using var server = new StubServer

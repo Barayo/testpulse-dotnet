@@ -45,6 +45,20 @@ public sealed class TestPulseLogger : ITestLogger
     // test host process) can agree on.
     private string TestOutputDir => Path.GetDirectoryName(_testAssemblyPath!)!;
 
+    // TestPulseUrl/TestPulseProject/TestPulseFailOnUnmatched/TestPulseDryRun
+    // reach Config.Resolve() below as plain environment variables -- by the
+    // time this logger's Initialize runs, TestPulse.MSBuild.targets'
+    // TestPulseSetEnvVars target (BeforeTargets="VSTest") has already set
+    // them directly on this same process via Environment.SetEnvironmentVariable,
+    // which the spawned test host process then inherits normally, the same
+    // way any child process inherits its parent's environment. See that
+    // target's own comment for the two mechanisms tried and rejected before
+    // landing on this one (VSTestEnvironment reaches only the test host, not
+    // this driver process; VSTest logger parameters never carried these
+    // values through either $(VSTestLogger) or a generated .runsettings
+    // file). No bridging code belongs here as a result -- this logger reads
+    // the environment exactly as if every setting had been exported
+    // directly, because by the time it runs, it effectively has been.
     public void Initialize(TestLoggerEvents events, string testResultsDirPath)
     {
         events.TestResult += OnTestResult;

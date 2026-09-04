@@ -23,6 +23,15 @@ every `[TestPulseCase]`-tagged method, then submits it.
 dotnet add package TestPulse.MSBuild
 ```
 
+**If you're starting a new test project, `dotnet new xunit` scaffolds
+xUnit v2 by default — this package requires v3.** Use
+`dotnet new xunit -f net8.0 --xunit-version 3` instead, or if you already
+have a v2 project, swap `xunit`/`xunit.runner.visualstudio` for
+`xunit.v3`. `Attach()` throws "outside an active TestPulse test
+execution" on xUnit v2, even from a genuinely running test, since v2 has
+no `TestContext.Current` — this is expected, not a bug, but easy to hit
+by starting from the default template.
+
 ## Tag your tests
 
 ```csharp
@@ -84,21 +93,21 @@ a single class is one collection) don't corrupt each other's attachments.
 
 ## Configuration
 
-Settings are read from environment variables on the test host process
-(`TestPulseLogger` runs in a separate process from MSBuild's own property
-evaluation, so it can't read MSBuild properties directly). The package's
-`.props` file bridges MSBuild properties into the same-named environment
-variables for you, only when the property is actually set — so an
-environment variable you already set directly (e.g. a CI secret) is never
-overwritten with an empty value.
+`TestPulseLogger` reads plain environment variables. Url/Project/
+FailOnUnmatched/DryRun can be set either as real environment variables
+directly, or as MSBuild properties in your `.csproj` (or a `/p:` override)
+— the package's `.props`/`.targets` files export the MSBuild property
+values as real environment variables on the process before `dotnet test`
+spawns the test run, only when the variable isn't already set directly,
+so a value you set directly (e.g. a CI secret) is never overwritten.
 
 | Setting | MSBuild property (csproj default or `/p:` override) | Environment variable |
 |---|---|---|
 | API base URL | `<TestPulseUrl>` | `TESTPULSE_URL` |
-| API token | `<TestPulseToken>` | `TESTPULSE_TOKEN` |
 | Project key | `<TestPulseProject>` | `TESTPULSE_PROJECT` |
 | Fail on unmatched | `<TestPulseFailOnUnmatched>` | `TESTPULSE_FAIL_ON_UNMATCHED` |
 | Dry run | `<TestPulseDryRun>` | `TESTPULSE_DRY_RUN` |
+| API token | *(none — see below)* | `TESTPULSE_TOKEN` |
 
 ```xml
 <!-- your test project's .csproj -->
@@ -112,11 +121,12 @@ overwritten with an empty value.
 dotnet test /p:TestPulseUrl=https://ci.example
 ```
 
-**Set `TESTPULSE_TOKEN` directly in your environment (e.g. a CI secret),
-not `<TestPulseToken>`/`/p:TestPulseToken=...`** — a committed csproj
-property or a command-line value can end up in shell history or a
-committed file; an environment variable set from a CI secret does not.
-The resolved token is never logged, at any verbosity level.
+**`TESTPULSE_TOKEN` must be set directly as a real environment variable
+(e.g. a CI secret) — there is no MSBuild-property equivalent for it at
+all**, unlike the four settings above: a committed csproj property or a
+command-line value can end up in shell history or a committed file, so
+the token deliberately has no path through either. The resolved token is
+never logged, at any verbosity level.
 
 ## Build outcome policy
 

@@ -1,4 +1,68 @@
 <Project>
+  <!-- Bridges TestPulseUrl/TestPulseProject/TestPulseFailOnUnmatched/
+       TestPulseDryRun into real process environment variables, using an
+       inline RoslynCodeTaskFactory task calling
+       System.Environment.SetEnvironmentVariable directly, IN-PROCESS,
+       inside the same `dotnet test`/MSBuild process that later spawns
+       VSTestTask's vstest.console subprocess, which inherits that
+       process's environment normally, the same way any child process
+       does. This is the third mechanism tried for this, and the first
+       that was actually verified to work end to end against a real
+       running TestPulse instance:
+         1. VSTestEnvironment only injects environment variables into the
+            spawned TEST HOST process, never the separate driver process
+            TestPulseLogger itself runs in, confirmed empirically: a
+            value set purely via an MSBuild property never reached
+            Config.Resolve() there.
+         2. Embedding "Key=Value" pairs into $(VSTestLogger) itself, on
+            the theory that ITestLoggerWithParameters would receive them
+            as logger parameters, failed two different ways: first,
+            $(VSTestLogger) turned out to be a semicolon-delimited LIST OF
+            LOGGERS (VSTest split "testpulse;Url=..." into separate,
+            mostly-invalid logger entries, the same underlying fact
+            already responsible for the "junit;testpulse silently drops
+            one" discovery elsewhere in this design). Second, even after
+            routing the values through a proper generated .runsettings
+            file's Logger/Configuration block instead (VSTest's own
+            documented mechanism for logger configuration), a diagnostic
+            probe proved Initialize's `parameters` dictionary only ever
+            contained VSTest's own built-in entries (TestRunDirectory,
+            TargetFramework); RunSettings Logger/Configuration values
+            are evidently not generically forwarded into
+            ITestLoggerWithParameters for third-party loggers.
+       BeforeTargets="VSTest" (not AfterTargets) means this always runs
+       before VSTestTask executes at all, so it isn't subject to the
+       "MSBuild aborts the rest of the target graph once a task fails"
+       problem that ruled out AfterTargets elsewhere in this package,
+       since this target's own success or failure is unconditional on
+       whether the tests themselves later pass or fail. Each variable is
+       only set when not already present, preserving "a directly-set
+       environment variable is never overwritten", the same semantics
+       TestPulseLogger's own Config.Resolve() already documents. -->
+  <UsingTask TaskName="TestPulseSetEnvIfUnset" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Name ParameterType="System.String" Required="true" />
+      <Value ParameterType="System.String" Required="false" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+        if (!string.IsNullOrEmpty(Value) && string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(Name)))
+        {
+            System.Environment.SetEnvironmentVariable(Name, Value);
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="TestPulseSetEnvVars" BeforeTargets="VSTest">
+    <TestPulseSetEnvIfUnset Name="TESTPULSE_URL" Value="$(TestPulseUrl)" />
+    <TestPulseSetEnvIfUnset Name="TESTPULSE_PROJECT" Value="$(TestPulseProject)" />
+    <TestPulseSetEnvIfUnset Name="TESTPULSE_FAIL_ON_UNMATCHED" Value="$(TestPulseFailOnUnmatched)" />
+    <TestPulseSetEnvIfUnset Name="TESTPULSE_DRY_RUN" Value="$(TestPulseDryRun)" />
+  </Target>
+
   <!-- Reads the .testpulse/result.json marker TestPulseLogger writes
        (from its TestRunComplete handler) and fails the build if it
        indicates submission failure or an unmatched-with-fail-on-unmatched

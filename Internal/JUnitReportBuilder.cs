@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Xml.Linq;
+using Xunit;
 
 namespace TestPulse.Internal;
 
@@ -86,7 +87,17 @@ public static class JUnitReportBuilder
 
         var doc = new XElement("testsuites", testsuite);
         var sb = new StringBuilder();
-        using (var writer = System.Xml.XmlWriter.Create(sb, new System.Xml.XmlWriterSettings { Indent = true, OmitXmlDeclaration = false }))
+        // OmitXmlDeclaration: true -- XmlWriter.Create(StringBuilder, ...)
+        // always declares encoding="utf-16" in the prolog regardless of
+        // configured settings (a well-known .NET quirk: a StringBuilder
+        // target holds .NET's native UTF-16 chars, and the writer reports
+        // that faithfully). This report is only ever embedded as a string
+        // inside a JSON payload transmitted as UTF-8, never written to a
+        // file with real matching bytes, so a declared encoding here is
+        // both unnecessary and actively wrong -- confirmed against a real
+        // running TestPulse instance, whose decoder (no CharsetReader
+        // configured) rejects the mismatch outright with a 400.
+        using (var writer = System.Xml.XmlWriter.Create(sb, new System.Xml.XmlWriterSettings { Indent = true, OmitXmlDeclaration = true }))
         {
             new XDocument(doc).Save(writer);
         }
@@ -110,11 +121,28 @@ public static class JUnitReportBuilder
         var exact = candidates.FindAll(m => m.Name == name);
         if (exact.Count == 1)
         {
-            var attr = exact[0].GetCustomAttribute<TestPulseCaseAttribute>();
+            var method = exact[0];
+            var attr = method.GetCustomAttribute<TestPulseCaseAttribute>();
             if (attr is not null)
             {
-                InjectProperties(testcase, attr);
-                matchedCaseKeys.Add(attr.CaseKey);
+                // VSTest's real TestCase.FullyQualifiedName does NOT carry a
+                // Theory invocation's decorated suffix (e.g. `(user: "a")")
+                // -- only TestCase.DisplayName does, confirmed empirically
+                // against a real xUnit v3 Theory run. Every invocation of a
+                // Theory method therefore reaches this exact-match branch
+                // under the same undecorated name, indistinguishable from a
+                // single-invocation [Fact] by name alone. Detecting
+                // [TheoryAttribute] directly via reflection is the only
+                // correct signal, not the invocation name.
+                if (method.GetCustomAttribute<TheoryAttribute>() is not null)
+                {
+                    notes.Add(new AnnotationNote { ClassName = className, TestCaseName = name, Reason = $"skipped: '{method.Name}' is a [Theory] method, unsupported for property injection" });
+                }
+                else
+                {
+                    InjectProperties(testcase, attr);
+                    matchedCaseKeys.Add(attr.CaseKey);
+                }
             }
         }
         else if (exact.Count > 1)
