@@ -3,12 +3,12 @@ using System;
 namespace TestPulse;
 
 /// <summary>
-/// Tags an xUnit test method with a TestPulse case key, recorded via
-/// property injection into the JunitXml.TestLogger-produced report.
-/// Placing this on a [Theory] method is unsupported: a Theory
-/// invocation's decorated &lt;testcase&gt; name is left unmodified by the
-/// annotate step (see TestPulseLogger), so no property is ever injected
-/// for it -- a build-time warning is logged for this case.
+/// Tags an xUnit test method with a TestPulse case key, recorded as a
+/// &lt;property&gt; in the JUnit XML report TestPulseLogger builds directly
+/// from the test run. Placing this on a [Theory] method is unsupported: a
+/// Theory invocation's decorated &lt;testcase&gt; name is left unmodified,
+/// so no property is ever injected for it -- a note is logged for this
+/// case.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class TestPulseCaseAttribute : Attribute

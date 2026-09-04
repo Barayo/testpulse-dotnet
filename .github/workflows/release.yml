@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: github.repository == 'Barayo/testpulse-dotnet'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Verify
+        run: |
+          dotnet build TestPulse.MSBuild.csproj
+          dotnet test tests/TestPulse.MSBuild.Tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Semantic release (version, changelog, tag, GitHub release; Angular-commit-convention)
+        id: release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/commit-analyzer
+            @semantic-release/release-notes-generator
+            @semantic-release/github
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack
+        if: steps.release.outputs.new_release_published == 'true'
+        run: dotnet pack TestPulse.MSBuild.csproj -c Release -o artifacts -p:Version=${{ steps.release.outputs.new_release_version }}
+      - name: Publish to NuGet.org (Trusted Publishing / OIDC, no long-lived API key)
+        if: steps.release.outputs.new_release_published == 'true'
+        uses: NuGet/login@v1
+        with:
+          user: Barayo
+      - name: Push package
+        if: steps.release.outputs.new_release_published == 'true'
+        run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --skip-duplicate
