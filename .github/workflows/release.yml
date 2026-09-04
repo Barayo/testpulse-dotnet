@@ -24,8 +24,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Ensure the local NuGet source directory exists (nuget.config references it; some NuGet client versions fail restore outright if a configured local source is missing, even when unused)
+        run: mkdir -p artifacts/local-nuget
       - name: Verify
         run: |
+          dotnet pack TestPulse.MSBuild.csproj -o artifacts/local-nuget
           dotnet build TestPulse.MSBuild.csproj
           dotnet test tests/TestPulse.MSBuild.Tests
       - uses: actions/setup-node@v4

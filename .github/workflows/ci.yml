@@ -13,5 +13,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Ensure the local NuGet source directory exists (nuget.config references it; some NuGet client versions fail restore outright if a configured local source is missing, even when unused)
+        run: mkdir -p artifacts/local-nuget
+      - name: Pack (populates the local NuGet source the fixture projects restore from)
+        run: dotnet pack TestPulse.MSBuild.csproj -o artifacts/local-nuget
       - run: dotnet build TestPulse.MSBuild.csproj
       - run: dotnet test tests/TestPulse.MSBuild.Tests
