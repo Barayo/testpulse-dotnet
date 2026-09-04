@@ -5,11 +5,35 @@
          genuinely failing test run (unlike the originally-planned
          AfterTargets="VSTest" MSBuild-target approach, which MSBuild
          silently never schedules once the built-in VSTestTask fails).
-         The Condition guards preserve an existing explicit choice: if
-         the consuming project already sets its own VSTestLogger/
-         VSTestTestAdapterPath, TestPulseLogger is simply not added
-         rather than silently overriding it. -->
+         Only "testpulse" is registered here. TestPulseLogger builds
+         its own JUnit XML report directly from the TestResult events it
+         observes, rather than depending on a second, separately
+         registered JunitXml.TestLogger; confirmed during implementation
+         that $(VSTestLogger) cannot combine two independently-named
+         loggers into one run (each works alone, "junit;testpulse"
+         silently drops one), a real platform limitation. The Condition
+         guards preserve an existing explicit choice: if the consuming
+         project already sets its own VSTestLogger/VSTestTestAdapterPath,
+         TestPulseLogger is simply not added rather than silently
+         overriding it. -->
     <VSTestLogger Condition=" '$(VSTestLogger)' == '' ">testpulse</VSTestLogger>
     <VSTestTestAdapterPath Condition=" '$(VSTestTestAdapterPath)' == '' ">$(MSBuildThisFileDirectory)tools</VSTestTestAdapterPath>
   </PropertyGroup>
+
+  <!-- Maps TestPulse* MSBuild properties (settable via a plain csproj
+       PropertyGroup, or overridden with `dotnet test /p:TestPulseUrl=...`
+       on the command line, with MSBuild resolving that precedence itself)
+       into environment variables on the test host process via the real,
+       MSBuild-recognized VSTestEnvironment item. Each Condition means: if
+       the property was never set, no environment variable is added here
+       at all, so a TESTPULSE_TOKEN a user already set directly in their
+       shell/CI environment passes through untouched rather than being
+       overwritten with an empty value. -->
+  <ItemGroup>
+    <VSTestEnvironment Include="TESTPULSE_URL=$(TestPulseUrl)" Condition=" '$(TestPulseUrl)' != '' " />
+    <VSTestEnvironment Include="TESTPULSE_TOKEN=$(TestPulseToken)" Condition=" '$(TestPulseToken)' != '' " />
+    <VSTestEnvironment Include="TESTPULSE_PROJECT=$(TestPulseProject)" Condition=" '$(TestPulseProject)' != '' " />
+    <VSTestEnvironment Include="TESTPULSE_FAIL_ON_UNMATCHED=$(TestPulseFailOnUnmatched)" Condition=" '$(TestPulseFailOnUnmatched)' != '' " />
+    <VSTestEnvironment Include="TESTPULSE_DRY_RUN=$(TestPulseDryRun)" Condition=" '$(TestPulseDryRun)' != '' " />
+  </ItemGroup>
 </Project>

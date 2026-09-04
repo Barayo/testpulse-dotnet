@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>TestPulse.MSBuild</PackageId>
+    <!-- Overridden by CI/release tooling for real releases; this default
+         lets local development/testing pack+consume a real NuGet package
+         (required to test the build/*.props/.targets auto-import
+         mechanism for real, since a plain ProjectReference does NOT
+         trigger it; only an actual PackageReference does. -->
+    <Version Condition="'$(Version)' == ''">0.0.0-local</Version>
     <!-- The .TestLogger suffix is required for VSTest's own extension
          auto-discovery via the test-adapter-path mechanism (confirmed
          empirically: an identically-implemented ITestLogger named
@@ -30,8 +36,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="TestPulse.MSBuild.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="xunit.v3.extensibility.core" Version="4.0.0" />
-    <PackageReference Include="JunitXml.TestLogger" Version="8.0.0" />
     <PackageReference Include="Microsoft.TestPlatform.ObjectModel" Version="17.12.0" />
   </ItemGroup>
 
@@ -42,6 +51,10 @@
          repro to survive test failure (unlike the originally, and
          incorrectly, specified AfterTargets="VSTest" approach). -->
     <None Include="build\TestPulse.MSBuild.props" Pack="true" PackagePath="build\TestPulse.MSBuild.props" />
+    <!-- Narrow build-failure check reading TestPulseLogger's own result
+         marker. See design.md's "Failing the build" decision: a VSTest
+         logger has no way to affect dotnet test's exit code directly. -->
+    <None Include="build\TestPulse.MSBuild.targets" Pack="true" PackagePath="build\TestPulse.MSBuild.targets" />
     <!-- The built assembly is placed a second time under build/tools/,
          which VSTestTestAdapterPath (set by the .props above) points at,
          making TestPulseLogger discoverable at test-run time separate

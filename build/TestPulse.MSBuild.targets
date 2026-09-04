@@ -1,0 +1,43 @@
+<Project>
+  <!-- Reads the .testpulse/result.json marker TestPulseLogger writes
+       (from its TestRunComplete handler) and fails the build if it
+       indicates submission failure or an unmatched-with-fail-on-unmatched
+       outcome. A VSTest logger cannot itself affect dotnet test's exit
+       code, confirmed during implementation, so this narrow second use of
+       AfterTargets="VSTest" carries that signal instead. Verified safe via
+       an isolated repro: AfterTargets="VSTest" reliably fires and an
+       Error task inside it reliably sets a non-zero exit code whenever
+       VSTestTask itself succeeds (i.e. whenever tests passed). The one
+       case this cannot separately signal is tests-failed-and-submission-
+       also-failed, where the build's exit code is already non-zero from
+       the test failure itself regardless. -->
+  <Target Name="TestPulseCheckResult" AfterTargets="VSTest">
+    <PropertyGroup>
+      <!-- $(TargetDir) is the canonical, already-fully-resolved MSBuild
+           property for the actual build output directory. Reconstructing
+           it from MSBuildProjectDirectory+OutputPath is unreliable (it
+           does not necessarily include the target framework subfolder,
+           confirmed empirically: TestPulseLogger's own marker, written
+           relative to the test host process's real working directory,
+           was not found at the reconstructed path). -->
+      <TestPulseResultFile>$(TargetDir).testpulse\result.json</TestPulseResultFile>
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(TestPulseResultFile)" Condition="Exists('$(TestPulseResultFile)')">
+      <Output TaskParameter="Lines" ItemName="TestPulseResultLines" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <!-- TestPulseLogger writes compact, single-line JSON
+           (System.Text.Json's default), so ReadLinesFromFile always
+           produces exactly one item. A direct string comparison
+           against that exact, self-controlled format is simpler and
+           more reliable than a substring/Contains check through a
+           property function, which does not reliably expand an
+           @(ItemName) reference embedded inside a quoted function
+           argument. -->
+      <TestPulseResultContent>@(TestPulseResultLines)</TestPulseResultContent>
+    </PropertyGroup>
+    <Error
+      Text="testpulse: submission failed or was unmatched with TestPulseFailOnUnmatched set -- see the console output above for details"
+      Condition="Exists('$(TestPulseResultFile)') And $(TestPulseResultContent.Contains('&quot;failed&quot;:true'))" />
+  </Target>
+</Project>
